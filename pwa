@@ -1,0 +1,54 @@
+#!/bin/bash
+#
+# Usage: pwa <branch>
+#
+# Applies a patch when piped in (from mutt), by looking it up on patchwork
+# and applying it from there. This brings in acks, etc, as needed. 
+#
+# Branch is optional. If provided, it'll check out that branch before applying.
+
+# Default to HEAD, i.e. no change.
+branch=${1:-HEAD}
+
+fail () {
+        echo "$1" >&2
+        exit 1
+}
+
+while read line ; do 
+	case "${line}" in
+	Message-[iI][dD]:*)
+		MSGID="${line/#*: /}"
+		;;
+	*)
+		;;
+	esac
+done
+
+if [ -z "${MSGID}" ] ; then
+	echo Error: No message ID found
+	exit 1
+fi
+MSGID_NOBRACES=$(echo "${MSGID}" | sed 's/<//g' | sed 's/>//g')
+
+PROJ=linux-soc
+PID=$(pwclient search -p "${PROJ}" -m "${MSGID}" -f '%{id}')
+if [ -z "${PID}" ] ; then
+  PROJ=linux-arm-kernel
+  PID=$(pwclient search -p "${PROJ}" -m "${MSGID}" -f '%{id}')
+fi
+
+if [ -z "${PID}" ] ; then
+	echo Error: No patch ID found for Message ID "${MSGID}"
+	exit 1
+fi
+
+echo patchwork patch id: ${PID} in ${PROJ}
+
+git checkout ${branch} || fail "Can't check out branch ${branch}"
+pwclient view "${PID}" | git am -s || fail "git am failed"
+GIT_EDITOR="git interpret-trailers --where start --trailer \"Link: https://lore.kernel.org/r/${MSGID_NOBRACES}\" --in-place" git commit --amend || fail "Amending mailid failed"
+#pwclient update -p "${PROJ}" -s Queued -c "$(git log -1 --format=%H)" "${PID}" || fail "Updating patch status failed"
+pwclient update -p "${PROJ}" -a no -c "$(git log -1 --format=%H)" "${PID}" || fail "Updating patch status failed"
+
+exit 0

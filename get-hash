@@ -1,0 +1,20 @@
+#!/bin/bash
+
+# Given a patchwork patch id for a merge, try to figure out the head of
+#merged branch.
+
+PID=$1
+
+if [ -z "${PID}" ] ; then
+	echo "Usage: $0 <patchid>"
+	exit 1
+fi
+
+read -a args <<< $(pwclient view "${PID}" | sed -z 's@.*The following changes since commit \([^\n]*\):.*are available in the .it repository at:[[:space:]]*\([a-zA-Z0-9:/.-]*\)[[:space:]]*\([a-zA-Z0-9:/.-]*\).*for you to fetch changes up to \([0-9a-fA-F]*\):.*@\1 \4 \2 \3\n@')
+
+if [ ${args[0]} == "From" ] ; then
+	echo ""
+	exit 1
+fi
+
+echo ${args[1]}

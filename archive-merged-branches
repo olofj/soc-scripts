@@ -1,0 +1,17 @@
+#!/bin/bash
+
+# This was a local script to sync up merged branches before we had the bot
+# monitoring our tree. It'll still be useful to age out mainline-merged branches
+# so I'm keeping the script around.
+
+for p in $(pwclient list -f '%{id}' -a no) ; do
+	H=$(~/bin/get-hash ${p})
+
+	[ -n "${H}" ] && \
+		git merge-base --is-ancestor ${H} origin/for-next 2>&1 && \
+		pwclient update -s Accepted -c ${H} ${p}
+
+	[ -n "${H}" ] && \
+		git merge-base --is-ancestor ${H} mainline/master 2>&1 && \
+		pwclient update -a yes -s Mainlined -c ${H} ${p}
+done

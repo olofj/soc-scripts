@@ -1,0 +1,60 @@
+#!/bin/bash
+#
+# Usage: pwm <branch>
+#
+# Merges a pull request as piped in on stdin (i.e. from mutt). It does
+# this by downloading the pull request from patchwork and processing that
+# contents. This keeps behavior the same as for patches, even if there
+# aren't acks to bring in, etc.
+#
+# Branch is optional. If provided, it'll check out that branch before merging.
+
+
+# Default to HEAD (i.e. don't check anything new out)
+branch=${1:-HEAD}
+
+fail () {
+	echo "$1" >&2
+	exit 1
+}
+
+while read line ; do 
+	case "${line}" in
+	Message-[iI][dD]:*)
+		MSGID="${line/#*: /}"
+		;;
+	*)
+		;;
+	esac
+done
+
+if [ -z "${MSGID}" ] ; then
+	echo Error: No message ID found
+	exit 1
+fi
+MSGID_NOBRACES=$(echo "${MSGID}" | sed 's/<//g' | sed 's/>//g')
+
+PID="$(pwclient list -m "${MSGID}" -f '%{id}')"
+
+if [ -z "${PID}" ] ; then
+	echo Error: No patch ID found for Message ID "${MSGID}"
+	exit 1
+fi
+
+read -a args <<< $(pwclient view "${PID}" | sed -z 's@.*The following changes since commit \([^\n]*\):.*are available in the .it repository at:[[:space:]]*\([a-zA-Z0-9:/.-]*\)[[:space:]]*\([a-zA-Z0-9:/.-]*\).*for you to fetch changes up to \([0-9a-fA-F]*\):.*@\1 \4 \2 \3\n@')
+
+echo "Fetching from ${args[2]} ${args[3]}"
+git fetch "${args[2]}" "${args[3]}" || ( echo "Fetch failed" ; exit 1 )
+
+top_hash="$(git log -1 --format=%H FETCH_HEAD)"
+if [ "${top_hash}" != "${args[1]}" ] ; then
+	echo "Topmost hash is not the same. Expected ${args[1]}"
+	exit 1
+fi
+
+git checkout ${branch} || fail "Couldn't check out target branch"
+git merge --no-ff --log --no-edit FETCH_HEAD || fail "git merge failed"
+git log -1 || fail "git log failed?!"
+GIT_EDITOR="git interpret-trailers --where start --trailer \"Link: https://lore.kernel.org/r/${MSGID_NOBRACES}\" --in-place" git commit --amend -s || fail "Failed to amend link"
+# Set the commit for the merge on patchwork.
+pwclient update -p linux-soc -a no -c "$(git log -1 --format=%H)" "${PID}" || fail "Couldn't update patchwork"
