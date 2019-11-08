@@ -42,7 +42,7 @@ PID="$(pwclient list -m "${MSGID}" -f '%{id}')"
 
 [ -z "${PID}" ] && fail "Error: No patch ID found for Message ID: ${MSGID}"
 
-read -a args <<< $(pwclient view "${PID}" | sed -z 's@.*The following changes since commit \([^\n]*\):.*are available in the .it repository at:[[:space:]]*\([a-zA-Z0-9:/.-]*\)[[:space:]]*\([a-zA-Z0-9:/._-]*\).*for you to fetch changes up to \([0-9a-fA-F]*\):.*@\1 \4 \2 \3\n@')
+read -a args <<< $(pwclient view "${PID}" | sed -z 's@.*The following changes since commit \([^\n]*\):.*are available in the .it repository at:[[:space:]]*\([a-zA-Z0-9:/.-]*\)[[:space:]\\]*\([a-zA-Z0-9:/._-]*\).*for you to fetch changes up to \([0-9a-fA-F]*\):.*@\1 \4 \2 \3\n@')
 
 echo "Fetching from ${args[2]} ${args[3]}"
 git fetch "${args[2]}" "${args[3]}" || fail "Could not fetch ${args[2]} ${args[3]}"
